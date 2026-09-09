@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1, viewport-fit=cover'>
+<title>BODY BENCH - the whole body, benchmarked</title>
+<style>
+  html,body { margin:0; padding:0; background:#f7c8a0; overflow:hidden; }
+  #c { position:fixed; inset:0; display:block; }
+  .chrome { position:fixed; z-index:10; }
+  #title { top:34px; left:34px; pointer-events:none; color:#3a2c22; }
+  #title h1 { font-family:Georgia,'Times New Roman',serif; font-size:52px; margin:0; letter-spacing:-1.5px; }
+  #title h1 span { color:#b0543a; }
+  #title .sub { font-family:Georgia,serif; font-size:20px; font-style:italic; color:#8a5a40; margin-top:-2px; }
+  #title .tag { font-family:Menlo,monospace; font-size:10px; letter-spacing:2px; margin-top:10px; color:#6b4a36; }
+  .badge { font-family:Menlo,monospace; font-size:10px; letter-spacing:2px; color:#3a2c22;
+           border:1px solid rgba(58,44,34,.55); padding:6px 10px; border-radius:3px;
+           background:rgba(255,240,225,.55); backdrop-filter:blur(6px); }
+  #badgeR { top:38px; right:34px; text-align:right; line-height:1.7; }
+  #dock { left:50%; bottom:26px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .pill { display:flex; align-items:center; gap:4px; background:rgba(22,18,20,.78); backdrop-filter:blur(10px);
+          border-radius:999px; padding:7px 9px; box-shadow:0 6px 24px rgba(60,30,20,.25); }
+  .pill button { border:none; background:transparent; color:#e9dfd2; font-family:Menlo,monospace; font-size:12px;
+                 letter-spacing:1px; padding:7px 14px; border-radius:999px; cursor:pointer; white-space:nowrap; }
+  .pill button:hover { color:#fff; }
+  .pill button.on { background:#f3e7d3; color:#1c1712; }
+  .pill .sep { width:1px; height:18px; background:rgba(233,223,210,.25); margin:0 6px; }
+  .pill button.ico { padding:7px 10px; font-size:13px; }
+  #cap { font-family:Menlo,monospace; font-size:10px; letter-spacing:2px; color:rgba(58,44,34,.75); }
+  #fade { position:fixed; inset:0; background:#f7c8a0; z-index:50; transition:opacity 1.2s ease; pointer-events:none; }
+</style>
+</head>
+<body>
+<canvas id='c'></canvas>
+<div id='fade'></div>
+<div class='chrome' id='title'>
+  <h1>BODY BENCH<span>.</span></h1>
+  <div class='sub'>the whole body, benchmarked.</div>
+  <div class='tag'>GEN 6 &middot; SELF-IMPROVING SCULPT LOOP &middot; FROZEN AT HIGH FIDELITY</div>
+</div>
+<div class='chrome badge' id='badgeR'>A VERY SERIOUS BENCHMARK<br><span id='tris'>COMPUTING TRIS&hellip;</span></div>
+<div class='chrome' id='dock'>
+  <div class='pill' id='views'>
+    <button data-v='front'>Front</button><button data-v='quarter' class='on'>Quarter</button><button data-v='side'>Side</button><button data-v='back'>Back</button>
+  </div>
+  <div class='pill'>
+    <button id='mPearl' class='on'>&#9679; Pearl</button><button id='mNoir'>&#9679; Noir</button>
+    <span class='sep'></span>
+    <button class='ico' id='pause' title='pause rotation'>&#10074;&#10074;</button>
+    <button class='ico' id='reset' title='reset view'>&#8635;</button>
+  </div>
+  <div id='cap'>DRAG TO ORBIT &middot; SCROLL TO ZOOM</div>
+</div>
+<script type='importmap'>
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<script type='module'>
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xeab98e, 40, 220);
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.1, 600);
+
+/* ---------- sky: gradient dome + low sun glow ---------- */
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(280, 32, 20),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite:false, fog:false,
+    vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `
+      varying vec3 vP;
+      void main(){
+        vec3 d = normalize(vP);
+        float h = d.y;
+        vec3 hor = vec3(1.00,0.80,0.62);
+        vec3 mid = vec3(0.96,0.62,0.52);
+        vec3 top = vec3(0.44,0.54,0.71);
+        vec3 col = mix(hor, mid, smoothstep(0.02,0.16,h));
+        col = mix(col, top, smoothstep(0.14,0.55,h));
+        col = mix(vec3(0.42,0.36,0.38), col, smoothstep(-0.06,0.02,h));
+        vec3 sunDir = normalize(vec3(0.0,0.10,-1.0));
+        float g = pow(max(dot(d,sunDir),0.0), 90.0);
+        float w = pow(max(dot(d,sunDir),0.0), 8.0);
+        col += vec3(1.0,0.72,0.45)*g*1.1 + vec3(0.9,0.5,0.35)*w*0.35;
+        gl_FragColor = vec4(col,1.0);
+      }`
+  })
+);
+scene.add(sky);
+
+/* ---------- water + sand ---------- */
+const water = new THREE.Mesh(
+  new THREE.CircleGeometry(280, 64),
+  new THREE.MeshStandardMaterial({ color:0x4f7185, roughness:0.12, metalness:0.05 })
+);
+water.rotation.x = -Math.PI/2; water.position.y = -0.03; scene.add(water);
+
+const sand = new THREE.Mesh(
+  new THREE.CircleGeometry(16, 64),
+  new THREE.MeshStandardMaterial({ color:0xd9b48f, roughness:0.95 })
+);
+sand.rotation.x = -Math.PI/2; sand.receiveShadow = true; scene.add(sand);
+
+/* ---------- pedestal ---------- */
+const stoneMat = new THREE.MeshStandardMaterial({ color:0xe9e2d6, roughness:0.55 });
+const pedBase = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.68, 0.10, 48), stoneMat);
+pedBase.position.y = 0.05; pedBase.castShadow = pedBase.receiveShadow = true; scene.add(pedBase);
+const pedTop = new THREE.Mesh(new THREE.CylinderGeometry(0.50, 0.55, 0.09, 48), stoneMat);
+pedTop.position.y = 0.145; pedTop.castShadow = pedTop.receiveShadow = true; scene.add(pedTop);
+const PED_TOP = 0.19;
+
+/* ---------- the body: implicit sculpt, one smooth skin ---------- */
+const pearl = new THREE.MeshPhysicalMaterial({ color:0xf3ece2, roughness:0.28, clearcoat:0.55, clearcoatRoughness:0.35, sheen:0.3, sheenColor:new THREE.Color(0xffd9b0) });
+const noir  = new THREE.MeshPhysicalMaterial({ color:0x19171c, roughness:0.32, clearcoat:0.8, clearcoatRoughness:0.25 });
+
+const mc = new MarchingCubes(72, pearl, false, false, 250000);
+mc.isolation = 70;
+
+function ball(x,y,z,s,sub=12){ mc.addBall(x,y,z,s,sub); }
+function chain(pts, ss, sub=12){ for(let i=0;i<pts.length;i++) ball(pts[i][0],pts[i][1],pts[i][2],ss[i],sub); }
+
+const C = 0.5; // field center
+// legs
+chain([[0.445,0.070,C],[0.448,0.130,C],[0.450,0.190,C],[0.452,0.250,C]], [0.50,0.62,0.68,0.62]);
+chain([[0.555,0.070,C],[0.552,0.130,C],[0.550,0.190,C],[0.548,0.250,C]], [0.50,0.62,0.68,0.62]);
+// knees + thighs
+chain([[0.452,0.300,C],[0.455,0.360,C],[0.458,0.420,C],[0.462,0.465,C]], [0.60,0.80,0.88,0.90]);
+chain([[0.548,0.300,C],[0.545,0.360,C],[0.542,0.420,C],[0.538,0.465,C]], [0.60,0.80,0.88,0.90]);
+// feet (reach forward, +z is front)
+chain([[0.445,0.050,0.46],[0.445,0.048,0.42]], [0.42,0.38]);
+chain([[0.555,0.050,0.46],[0.555,0.048,0.42]], [0.42,0.38]);
+// hips / glutes
+chain([[0.50,0.500,C],[0.435,0.495,C],[0.565,0.495,C],[0.50,0.485,0.545],[0.455,0.475,0.535],[0.545,0.475,0.535]], [0.95,0.72,0.72,0.70,0.58,0.58]);
+// waist
+chain([[0.50,0.555,C],[0.50,0.600,C]], [0.60,0.58]);
+// chest / torso
+chain([[0.50,0.650,C],[0.50,0.690,C],[0.455,0.680,0.46],[0.545,0.680,0.46],[0.50,0.660,0.545]], [0.85,0.80,0.55,0.55,0.60]);
+// shoulders
+chain([[0.405,0.715,C],[0.595,0.715,C]], [0.58,0.58]);
+// neck
+chain([[0.50,0.745,C],[0.50,0.780,C]], [0.42,0.40]);
+// head
+chain([[0.50,0.845,C],[0.50,0.885,0.49],[0.50,0.800,0.475],[0.50,0.850,0.545]], [0.70,0.52,0.42,0.52]);
+// arms: shoulder -> elbow -> wrist, slightly out from torso
+chain([[0.385,0.705,C],[0.362,0.655,C],[0.352,0.605,C]], [0.50,0.46,0.42]);
+chain([[0.615,0.705,C],[0.638,0.655,C],[0.648,0.605,C]], [0.50,0.46,0.42]);
+chain([[0.350,0.555,C],[0.350,0.510,C],[0.352,0.465,C]], [0.40,0.38,0.36]);
+chain([[0.650,0.555,C],[0.650,0.510,C],[0.648,0.465,C]], [0.40,0.38,0.36]);
+
+mc.update();
+
+const SY = 0.95, SXZ = 0.62;
+mc.scale.set(SXZ, SY, SXZ);
+mc.position.set(0, PED_TOP + SY*0.91, 0); // field y=0.045 sits on pedestal
+mc.castShadow = true; mc.receiveShadow = false;
+scene.add(mc);
+
+const tris = Math.round(mc.geometry.drawRange.count/3);
+document.getElementById('tris').textContent = tris.toLocaleString('en-US') + ' TRIS RENDERED';
+
+/* ---------- lights ---------- */
+const sun = new THREE.DirectionalLight(0xffd9b0, 2.4);
+sun.position.set(-2.5, 4.2, -5.0);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -3; sun.shadow.camera.right = 3;
+sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -1;
+sun.shadow.camera.far = 20; sun.shadow.bias = -0.0004;
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xffc9a3, 0xd9b48f, 0.55));
+const rim = new THREE.DirectionalLight(0xff9a6a, 0.8); rim.position.set(3, 1.5, 3.5); scene.add(rim);
+
+/* ---------- controls + view presets ---------- */
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.06;
+controls.enablePan = false;
+controls.minDistance = 1.6; controls.maxDistance = 6;
+controls.maxPolarAngle = 1.5; controls.minPolarAngle = 0.6;
+controls.target.set(0, 1.05, 0);
+controls.autoRotate = true; controls.autoRotateSpeed = 0.7;
+
+const R = 2.9, EL = 0.24; // radius + elevation for presets
+const VIEWS = { front:0, quarter:Math.PI/4, side:Math.PI/2, back:Math.PI };
+function posFor(az){ return new THREE.Vector3(Math.sin(az)*R, 1.05 + Math.sin(EL)*R*0.55, Math.cos(az)*R); }
+camera.position.copy(posFor(VIEWS.quarter));
+
+let tween = null;
+function goTo(az){
+  const from = camera.position.clone();
+  const to = posFor(az);
+  // shortest arc: unwrap azimuth near current
+  const cur = Math.atan2(from.x, from.z);
+  let d = az - cur;
+  while(d > Math.PI) d -= 2*Math.PI;
+  while(d < -Math.PI) d += 2*Math.PI;
+  const targetAz = cur + d;
+  tween = { t:0, fromAz:cur, toAz:targetAz, fromY:from.y, toY:to.y };
+}
+document.querySelectorAll('#views button').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('#views button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    goTo(VIEWS[b.dataset.v]);
+  });
+});
+const pauseBtn = document.getElementById('pause');
+pauseBtn.addEventListener('click', ()=>{
+  controls.autoRotate = !controls.autoRotate;
+  pauseBtn.innerHTML = controls.autoRotate ? '&#10074;&#10074;' : '&#9654;';
+});
+document.getElementById('reset').addEventListener('click', ()=>{
+  document.querySelectorAll('#views button').forEach(x=>x.classList.remove('on'));
+  document.querySelector('#views button[data-v="quarter"]').classList.add('on');
+  controls.autoRotate = true; pauseBtn.innerHTML = '&#10074;&#10074;';
+  goTo(VIEWS.quarter);
+});
+const mP = document.getElementById('mPearl'), mN = document.getElementById('mNoir');
+mP.addEventListener('click', ()=>{ mc.material = pearl; mP.classList.add('on'); mN.classList.remove('on'); });
+mN.addEventListener('click', ()=>{ mc.material = noir;  mN.classList.add('on'); mP.classList.remove('on'); });
+
+/* ---------- loop ---------- */
+const clock = new THREE.Clock();
+function ease(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }
+function tick(){
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if(tween){
+    tween.t += dt/0.9;
+    const k = ease(Math.min(tween.t,1));
+    const az = tween.fromAz + (tween.toAz - tween.fromAz)*k;
+    const y  = tween.fromY  + (tween.toY  - tween.fromY )*k;
+    camera.position.set(Math.sin(az)*R, y, Math.cos(az)*R);
+    if(tween.t >= 1) tween = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+tick();
+requestAnimationFrame(()=>{ document.getElementById('fade').style.opacity = '0'; });
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
