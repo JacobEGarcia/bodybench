@@ -175,7 +175,7 @@ document.getElementById('tris').textContent = tris.toLocaleString('en-US') + ' T
 
 /* ---------- lights ---------- */
 const sun = new THREE.DirectionalLight(0xffd9b0, 2.4);
-sun.position.set(2.0, 4.2, 5.0);
+sun.position.set(-1.5, 3.8, -4.5);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.left = -3; sun.shadow.camera.right = 3;
@@ -183,7 +183,7 @@ sun.shadow.camera.top = 4; sun.shadow.camera.bottom = -1;
 sun.shadow.camera.far = 20; sun.shadow.bias = -0.0004;
 scene.add(sun);
 scene.add(new THREE.HemisphereLight(0xffc9a3, 0xd9b48f, 0.55));
-const rim = new THREE.DirectionalLight(0xff9a6a, 0.8); rim.position.set(-3, 1.5, -3.5); scene.add(rim);
+const rim = new THREE.DirectionalLight(0xff9a6a, 0.8); rim.position.set(3, 1.5, 3.5); scene.add(rim);
 
 /* ---------- controls + view presets ---------- */
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -195,7 +195,7 @@ controls.target.set(0, 0.98, 0);
 controls.autoRotate = true; controls.autoRotateSpeed = 0.7;
 
 const R = 3.5, EL = 0.17; // radius + elevation for presets
-const VIEWS = { front:0, quarter:Math.PI/4, side:Math.PI/2, back:Math.PI };
+const VIEWS = { front:Math.PI, quarter:Math.PI*0.75, side:Math.PI/2, back:0 };
 function posFor(az){ return new THREE.Vector3(Math.sin(az)*R, 0.98 + Math.sin(EL)*R*0.55, Math.cos(az)*R); }
 camera.position.copy(posFor(VIEWS.quarter));
 
